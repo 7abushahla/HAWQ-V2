@@ -1,20 +1,25 @@
 # HAWQ-V2
 
-Standalone PyTorch implementation of the HAWQ-V2 mixed-precision initializer from:
+Implementation of the **HAWQ-V2** mixed-precision *initialization* procedure in PyTorch—Hessian trace estimation, trace-weighted quantization sensitivity, and automatic bitwidth / frontier search—based on the NeurIPS 2020 paper:
 
-`HAWQ-V2: Hessian Aware trace-Weighted Quantization of Neural Networks`
+> **HAWQ-V2: Hessian Aware trace-Weighted Quantization of Neural Networks**  
+> Zhen Dong, Zhewei Yao, Daiyaan Arfeen, Amir Gholami, Michael W. Mahoney, Kurt Keutzer
 
-This package implements the HAWQ-V2 selection procedure as a self-contained repository:
+This repository keeps that logic as a **small, self-contained package** (initializer + CLI tools), not a full quantization-training stack. It provides:
 
-- Hutchinson-based average Hessian trace estimation
-- trace-weighted quantization perturbation scoring
-- mixed-precision configuration search
-- Pareto-style frontier export over Omega vs bit-complexity
-- structured result export for downstream quantization workflows
+- Hutchinson-based average Hessian trace estimation  
+- Trace-weighted quantization perturbation scoring  
+- Mixed-precision configuration search  
+- Pareto-style frontier export over Ω vs bit-complexity  
+- Structured JSON/CSV export for downstream QAT / deployment workflows  
 
-The implementation is designed to be usable as a general standalone HAWQ-V2 initializer for models built from
-`nn.Conv1d`, `nn.Conv2d`, and `nn.Linear`, including wrapped modules that expose the underlying weight-bearing layer
-through `.op`.
+The code targets models built from `nn.Conv1d`, `nn.Conv2d`, and `nn.Linear`, including wrappers that expose the underlying weight layer via `.op`.
+
+### Acknowledgements
+
+- **Primary lineage:** This implementation is taken mainly from the **hawqv2** initializer code that lived inside [mkaglins/nncf_pytorch](https://github.com/mkaglins/nncf_pytorch/tree/master) (NNCF-on-PyTorch fork), then factored out for standalone use.  
+- **Paper:** The algorithm follows the official NeurIPS 2020 write-up: [HAWQ-V2 (NeurIPS proceedings)](https://proceedings.neurips.cc/paper_files/paper/2020/hash/d77c703536718b95308130ff2e5cf9ee-Abstract.html).  
+- **Authors’ library:** We also acknowledge the **[Zhen-Dong/HAWQ](https://github.com/Zhen-Dong/HAWQ)** repository—the broader PyTorch quantization codebase from the Berkeley group. That repo mixes several HAWQ generations and is **oriented mainly toward HAWQ-V3**, TVM-oriented workflows, and full QAT pipelines, whereas **this repo isolates only the HAWQ-V2-style initializer** for reuse in other projects.
 
 ## Scope
 
@@ -72,41 +77,45 @@ Two search modes are supported:
 ## Repository Layout
 
 ```text
-hawqv2/
+examples/
+├── indoor_alpha_sweep_manifest.json
+└── sample_hawqv2_result.json
+src/hawqv2/
+├── __init__.py
+├── bitwidth_export.py
+├── compression_ratio.py
+├── config.py
 ├── examples/
-│   ├── indoor_alpha_sweep_manifest.json
-│   └── sample_hawqv2_result.json
-├── src/hawqv2/
-│   ├── __init__.py
-│   ├── bitwidth_export.py
-│   ├── compression_ratio.py
-│   ├── config.py
-│   ├── examples/
-│   │   └── toy_factory.py
-│   ├── hessian_trace.py
-│   ├── initializer.py
-│   ├── model.py
-│   ├── perturbations.py
-│   ├── quantization.py
-│   ├── selector.py
-│   └── traces_order.py
-└── tools/
-    ├── extract_bitwidths.py
-    ├── make_ai8x_qat_policy.py
-    ├── print_hawq_frontier.py
-    ├── run_hawqv2.py
-    ├── run_hawqv2_indoor.py
-    ├── run_hawqv2_indoor_sweep.py
-    └── select_ace_from_hawq.py
+│   └── toy_factory.py
+├── hessian_trace.py
+├── initializer.py
+├── model.py
+├── perturbations.py
+├── quantization.py
+├── selector.py
+└── traces_order.py
+tools/
+├── extract_bitwidths.py
+├── make_ai8x_qat_policy.py
+├── print_hawq_frontier.py
+├── run_hawqv2.py
+├── run_hawqv2_indoor.py
+├── run_hawqv2_indoor_sweep.py
+└── select_ace_from_hawq.py
+hawqv2_runs/          # example outputs (optional; may be gitignored in forks)
+results/              # optional sweep summaries when redistributing paper artifacts
+hawq_float_runs/      # optional ai8x float checkpoints/logs for reproduction
 ```
+
+Bundled sample HAWQ outputs (when present in a checkout) include `hawqv2_runs/indoor_alpha_sweep_pareto_seed42/`.
 
 Core modules:
 
-- [initializer.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/initializer.py): standalone HAWQ-V2 initializer
-- [hessian_trace.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/hessian_trace.py): Hutchinson trace estimator
-- [compression_ratio.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/compression_ratio.py): bit-complexity and compression-ratio accounting
-- [quantization.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/quantization.py): quantization and perturbation computation
-- [model.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/model.py): target-layer discovery and layer complexity profiling
+- [initializer.py](src/hawqv2/initializer.py): standalone HAWQ-V2 initializer
+- [hessian_trace.py](src/hawqv2/hessian_trace.py): Hutchinson trace estimator
+- [compression_ratio.py](src/hawqv2/compression_ratio.py): bit-complexity and compression-ratio accounting
+- [quantization.py](src/hawqv2/quantization.py): quantization and perturbation computation
+- [model.py](src/hawqv2/model.py): target-layer discovery and layer complexity profiling
 
 ## Programmatic Use
 
@@ -141,22 +150,30 @@ initializer = StandaloneHAWQPrecisionInitializer(
 )
 
 result = initializer.apply_init()
-save_hawq_result(result, "hawqv2/hawqv2_runs/result.json")
+save_hawq_result(result, "hawqv2_runs/result.json")
 ```
 
-For simpler use, the package also exposes `run_hawqv2(...)` through [selector.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/src/hawqv2/selector.py).
+For simpler use, the package also exposes `run_hawqv2(...)` through [selector.py](src/hawqv2/selector.py).
+
+## Python path
+
+This checkout does not yet ship a `pyproject.toml` / `setup.cfg`. From the **repository root**, add `src` to `PYTHONPATH` before `import hawqv2` or any `python tools/...` command:
+
+```bash
+export PYTHONPATH="$PWD/src"
+```
 
 ## Generic CLI
 
-Use [run_hawqv2.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/run_hawqv2.py) with a
+Use [run_hawqv2.py](tools/run_hawqv2.py) with a
 factory function that returns a model, a dataloader, a criterion, and optionally a custom criterion function.
 
 ```bash
-python hawqv2/tools/run_hawqv2.py \
+python tools/run_hawqv2.py \
   --factory my_project.hawq_factory:build \
   --factory-kwargs '{"checkpoint": "path/to/model.pth"}' \
   --search all \
-  --output hawqv2/hawqv2_runs/result.json
+  --output hawqv2_runs/result.json
 ```
 
 Factory return conventions:
@@ -179,9 +196,9 @@ Checkpoint guidance:
 CLI smoke-test with the included toy factory:
 
 ```bash
-python hawqv2/tools/run_hawqv2.py \
+python tools/run_hawqv2.py \
   --factory hawqv2.examples.toy_factory:build \
-  --output hawqv2/hawqv2_runs/toy_result.json \
+  --output hawqv2_runs/toy_result.json \
   --device cpu \
   --num-data-points 16 \
   --max-trace-iters 2
@@ -233,15 +250,15 @@ Example:
 To inspect a saved result as a table:
 
 ```bash
-python hawqv2/tools/print_hawq_frontier.py \
-  --input hawqv2/hawqv2_runs/result.json \
+python tools/print_hawq_frontier.py \
+  --input hawqv2_runs/result.json \
   --show frontier
 ```
 
 ## HAWQ + ACE Deployment Selection
 
 HAWQ-V2 does not observe final QAT accuracy and therefore should not be treated as the final deployment selector when
-the deployment objective is accuracy-constrained. In this paper repo, the intended workflow is:
+the deployment objective is accuracy-constrained. In the **Indoor Environment Quantization** / MAX78002 workflow, the intended pipeline is:
 
 1. HAWQ-V2 scores candidate bit assignments from the FP32 checkpoint using `Omega`.
 2. The HAWQ size-Omega frontier is retained as a reduced candidate set.
@@ -270,12 +287,12 @@ beta2 = 0.0
 With `beta1=1.0` and `beta2=0.0`, ACE reduces to choosing the smallest model among candidates whose QAT accuracy meets
 the target.
 
-Use [select_ace_from_hawq.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/select_ace_from_hawq.py)
+Use [select_ace_from_hawq.py](tools/select_ace_from_hawq.py)
 to join HAWQ candidates with QAT sweep results:
 
 ```bash
-python hawqv2/tools/select_ace_from_hawq.py \
-  --item 91:hawqv2/hawqv2_runs/indoor_L91_float_hawqv2_pareto.json \
+python tools/select_ace_from_hawq.py \
+  --item 91:hawqv2_runs/indoor_L91_float_hawqv2_pareto.json \
   --sweep-csv results/mixed_precision_sweep_summary_sizes.csv \
   --candidate-set frontier \
   --target-acc 99.2 \
@@ -299,15 +316,15 @@ by the paper's ACE rule after joining with QAT accuracy and model-size results.
 To apply ACE across multiple alpha values, pass multiple `--item` arguments:
 
 ```bash
-python hawqv2/tools/select_ace_from_hawq.py \
-  --item 91:hawqv2/hawqv2_runs/indoor_L91_float_hawqv2_pareto.json \
-  --item 101:hawqv2/hawqv2_runs/indoor_L101_float_hawqv2_pareto.json \
+python tools/select_ace_from_hawq.py \
+  --item 91:hawqv2_runs/indoor_L91_float_hawqv2_pareto.json \
+  --item 101:hawqv2_runs/indoor_L101_float_hawqv2_pareto.json \
   --sweep-csv results/mixed_precision_sweep_summary_sizes.csv \
   --candidate-set frontier \
   --target-acc 99.2 \
   --beta1 1.0 \
   --beta2 0.0 \
-  --output hawqv2/hawqv2_runs/hawq_frontier_ace99p2.json
+  --output hawqv2_runs/hawq_frontier_ace99p2.json
 ```
 
 For a full 11-alpha study, first create a manifest with one FP32 checkpoint per input length:
@@ -319,13 +336,13 @@ For a full 11-alpha study, first create a manifest with one FP32 checkpoint per 
       "tag": "L101",
       "alpha": 101,
       "input_length": 101,
-      "checkpoint": "/Users/hamza/Desktop/testMax/ai8x-training/hawq_float_runs/indoor_float_L101_seed_42___YYYY.MM.DD-HHMMSS/indoor_float_L101_seed_42_best.pth.tar"
+      "checkpoint": "/path/to/ai8x-training/hawq_float_runs/indoor_float_L101_seed_42___YYYY.MM.DD-HHMMSS/indoor_float_L101_seed_42_best.pth.tar"
     },
     {
       "tag": "L91",
       "alpha": 91,
       "input_length": 91,
-      "checkpoint": "/Users/hamza/Desktop/testMax/ai8x-training/hawq_float_runs/indoor_float_L91_seed_42___YYYY.MM.DD-HHMMSS/indoor_float_L91_seed_42_best.pth.tar"
+      "checkpoint": "/path/to/ai8x-training/hawq_float_runs/indoor_float_L91_seed_42___YYYY.MM.DD-HHMMSS/indoor_float_L91_seed_42_best.pth.tar"
     }
   ]
 }
@@ -336,11 +353,11 @@ Then run HAWQ-V2 in `pareto` mode for every FP32 checkpoint:
 ```bash
 conda activate max
 
-python hawqv2/tools/run_hawqv2_indoor_sweep.py \
-  --ai8x-root /Users/hamza/Desktop/testMax/ai8x-training \
-  --data-dir /Users/hamza/Desktop/testMax/ai8x-training/data/indoor_environment \
-  --manifest hawqv2/hawqv2_runs/indoor_alpha_sweep_manifest.json \
-  --output-dir hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto \
+python tools/run_hawqv2_indoor_sweep.py \
+  --ai8x-root /path/to/ai8x-training \
+  --data-dir /path/to/ai8x-training/data/indoor_environment \
+  --manifest examples/indoor_alpha_sweep_manifest.json \
+  --output-dir hawqv2_runs/indoor_alpha_sweep_pareto \
   --seed 42 \
   --device cpu \
   --bits 2 4 8 \
@@ -354,31 +371,31 @@ python hawqv2/tools/run_hawqv2_indoor_sweep.py \
 This writes one HAWQ result per alpha under:
 
 ```text
-hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/
+hawqv2_runs/indoor_alpha_sweep_pareto/results/
 ```
 
 Finally, apply ACE to the union of HAWQ frontier candidates. The exact command should include one `--item` per alpha:
 
 ```bash
-python hawqv2/tools/select_ace_from_hawq.py \
-  --item 101:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L101.json \
-  --item 91:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L91.json \
-  --item 81:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L81.json \
-  --item 71:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L71.json \
-  --item 61:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L61.json \
-  --item 51:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L51.json \
-  --item 41:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L41.json \
-  --item 31:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L31.json \
-  --item 21:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L21.json \
-  --item 11:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L11.json \
-  --item 5:hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/results/L5.json \
+python tools/select_ace_from_hawq.py \
+  --item 101:hawqv2_runs/indoor_alpha_sweep_pareto/results/L101.json \
+  --item 91:hawqv2_runs/indoor_alpha_sweep_pareto/results/L91.json \
+  --item 81:hawqv2_runs/indoor_alpha_sweep_pareto/results/L81.json \
+  --item 71:hawqv2_runs/indoor_alpha_sweep_pareto/results/L71.json \
+  --item 61:hawqv2_runs/indoor_alpha_sweep_pareto/results/L61.json \
+  --item 51:hawqv2_runs/indoor_alpha_sweep_pareto/results/L51.json \
+  --item 41:hawqv2_runs/indoor_alpha_sweep_pareto/results/L41.json \
+  --item 31:hawqv2_runs/indoor_alpha_sweep_pareto/results/L31.json \
+  --item 21:hawqv2_runs/indoor_alpha_sweep_pareto/results/L21.json \
+  --item 11:hawqv2_runs/indoor_alpha_sweep_pareto/results/L11.json \
+  --item 5:hawqv2_runs/indoor_alpha_sweep_pareto/results/L5.json \
   --sweep-csv results/mixed_precision_sweep_summary_sizes.csv \
   --candidate-set frontier \
   --target-acc 99.2 \
   --beta1 1.0 \
   --beta2 0.0 \
   --limit 0 \
-  --output hawqv2/hawqv2_runs/indoor_alpha_sweep_pareto/hawq_frontier_ace99p2.json
+  --output hawqv2_runs/indoor_alpha_sweep_pareto/hawq_frontier_ace99p2.json
 ```
 
 The validation question is whether the union of HAWQ frontiers still selects the exhaustive ACE-optimal configuration.
@@ -401,18 +418,18 @@ If you request an explicit selection mode, `selected_config` is populated:
 
 ## AI8X Extras
 
-This repository also includes helpers for the ai8x/MAX78002 workflow used in this paper repo. These are extensions on
+This repository also includes optional **ai8x / MAX78002** helpers (as used in the Indoor Environment Quantization publication). These are extensions on
 top of the standalone initializer, not the core of the implementation.
 
 Available helpers:
 
-- [run_hawqv2_indoor.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/run_hawqv2_indoor.py):
-  convenience runner for the indoor ai8x model in this repository
-- [run_hawqv2_indoor_sweep.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/run_hawqv2_indoor_sweep.py):
+- [run_hawqv2_indoor.py](tools/run_hawqv2_indoor.py):
+  convenience runner for the indoor environment CNN used with that ai8x overlay
+- [run_hawqv2_indoor_sweep.py](tools/run_hawqv2_indoor_sweep.py):
   manifest-driven sweep runner for multiple alpha/input-length checkpoints
-- [make_ai8x_qat_policy.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/make_ai8x_qat_policy.py):
+- [make_ai8x_qat_policy.py](tools/make_ai8x_qat_policy.py):
   export a selected configuration as an ai8x QAT policy
-- [extract_bitwidths.py](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/tools/extract_bitwidths.py):
+- [extract_bitwidths.py](tools/extract_bitwidths.py):
   normalize a result JSON into a simple `layer_bits` JSON
 
 Example indoor workflow:
@@ -420,12 +437,12 @@ Example indoor workflow:
 ```bash
 conda activate max
 
-python hawqv2/tools/run_hawqv2_indoor.py \
+python tools/run_hawqv2_indoor.py \
   --data-dir training/data/indoor_environment \
   --checkpoint path/to/checkpoint.pth.tar \
   --search all \
-  --output hawqv2/hawqv2_runs/indoor_hawqv2.json \
-  --policy-output hawqv2/hawqv2_runs/qat_policy_hawqv2.yaml \
+  --output hawqv2_runs/indoor_hawqv2.json \
+  --policy-output hawqv2_runs/qat_policy_hawqv2.yaml \
   --selection compression_ratio \
   --compression-ratio 1.5
 ```
@@ -434,7 +451,7 @@ For the indoor workflow, use a floating-point or pre-QAT checkpoint if possible.
 precision initialization. Using a final quantized/QAT checkpoint is possible as a diagnostic, but it is not the
 preferred path for selecting the mixed-precision configuration.
 
-This convenience runner expects the ai8x-side model/runtime pieces used by the training overlay in this repository.
+This convenience runner expects the ai8x-side model/runtime pieces from the matching `ai8x-training` overlay (indoor environment dataset and model defs).
 The standalone HAWQ-V2 initializer itself does not depend on ai8x.
 
 Alpha/input-length sweep:
@@ -444,18 +461,18 @@ Use the sweep runner to apply HAWQ-V2 to each fixed checkpoint independently.
 
 Example manifest:
 
-- [indoor_alpha_sweep_manifest.json](/Users/hamza/Documents/GitHub/Indoor-Environment-Quantization/hawqv2/examples/indoor_alpha_sweep_manifest.json)
+- [indoor_alpha_sweep_manifest.json](examples/indoor_alpha_sweep_manifest.json)
 
 Example sweep command:
 
 ```bash
 conda activate max
 
-python hawqv2/tools/run_hawqv2_indoor_sweep.py \
+python tools/run_hawqv2_indoor_sweep.py \
   --ai8x-root /path/to/ai8x-training \
   --data-dir /path/to/ai8x-training/data/indoor_environment \
-  --manifest hawqv2/examples/indoor_alpha_sweep_manifest.json \
-  --output-dir hawqv2/hawqv2_runs/indoor_alpha_sweep \
+  --manifest examples/indoor_alpha_sweep_manifest.json \
+  --output-dir hawqv2_runs/indoor_alpha_sweep \
   --seed 42 \
   --device cpu \
   --bits 2 4 8 \

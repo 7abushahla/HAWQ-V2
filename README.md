@@ -5,7 +5,9 @@ Implementation of the **HAWQ-V2** mixed-precision *initialization* procedure in 
 > **HAWQ-V2: Hessian Aware trace-Weighted Quantization of Neural Networks**  
 > Zhen Dong, Zhewei Yao, Daiyaan Arfeen, Amir Gholami, Michael W. Mahoney, Kurt Keutzer
 
-This repository keeps that logic as a **small, self-contained package** (initializer + CLI tools), not a full quantization-training stack. It provides:
+**What this repository is:** The **core** is the HAWQ-V2 mixed-precision initializer (library + generic CLIs). The same tree also includes **Analog Devices ai8x / MAX7800x-oriented** helpers—**example** manifest-driven runners (`run_hawqv2_indoor*`), QAT-policy export—and, when present, **bundled runs, float checkpoints, and sweep summaries** (`hawqv2_runs/`, `hawq_float_runs/`, `results/`) plus docs for an **ACE-style** selection workflow. Treat it as a **research + edge-deployment** snapshot around HAWQ-V2, not only a stripped-down “official implementation only” mirror.
+
+At a high level it provides:
 
 - Hutchinson-based average Hessian trace estimation  
 - Trace-weighted quantization perturbation scoring  
@@ -13,13 +15,13 @@ This repository keeps that logic as a **small, self-contained package** (initial
 - Pareto-style frontier export over Ω vs bit-complexity  
 - Structured JSON/CSV export for downstream QAT / deployment workflows  
 
-The code targets models built from `nn.Conv1d`, `nn.Conv2d`, and `nn.Linear`, including wrappers that expose the underlying weight layer via `.op`.
+The initializer targets models built from `nn.Conv1d`, `nn.Conv2d`, and `nn.Linear`, including wrappers that expose the underlying weight layer via `.op`.
 
 ### Acknowledgements
 
 - **Primary lineage:** This implementation is taken mainly from the **hawqv2** initializer code that lived inside [mkaglins/nncf_pytorch](https://github.com/mkaglins/nncf_pytorch/tree/master) (NNCF-on-PyTorch fork), then factored out for standalone use.  
 - **Paper:** The algorithm follows the official NeurIPS 2020 write-up: [HAWQ-V2 (NeurIPS proceedings)](https://proceedings.neurips.cc/paper_files/paper/2020/hash/d77c703536718b95308130ff2e5cf9ee-Abstract.html).  
-- **Authors’ library:** We also acknowledge the **[Zhen-Dong/HAWQ](https://github.com/Zhen-Dong/HAWQ)** repository—the broader PyTorch quantization codebase from the Berkeley group. That repo mixes several HAWQ generations and is **oriented mainly toward HAWQ-V3**, TVM-oriented workflows, and full QAT pipelines, whereas **this repo isolates only the HAWQ-V2-style initializer** for reuse in other projects.
+- **Authors’ library:** We also acknowledge the **[Zhen-Dong/HAWQ](https://github.com/Zhen-Dong/HAWQ)** repository—the broader PyTorch quantization codebase from the Berkeley group. That repo mixes several HAWQ generations and is **oriented mainly toward HAWQ-V3**, TVM-oriented workflows, and full QAT pipelines. **Here, the portable initializer logic follows the HAWQ-V2 formulation**, while extra scripts and artifacts target **ai8x / MAX7800x** workflows described elsewhere in this README.
 
 ## Scope
 
@@ -258,7 +260,7 @@ python tools/print_hawq_frontier.py \
 ## HAWQ + ACE Deployment Selection
 
 HAWQ-V2 does not observe final QAT accuracy and therefore should not be treated as the final deployment selector when
-the deployment objective is accuracy-constrained. In the **Indoor Environment Quantization** / MAX78002 workflow, the intended pipeline is:
+the deployment objective is accuracy-constrained. In a **MAX78002-style ai8x** workflow, the intended pipeline is:
 
 1. HAWQ-V2 scores candidate bit assignments from the FP32 checkpoint using `Omega`.
 2. The HAWQ size-Omega frontier is retained as a reduced candidate set.
@@ -418,13 +420,13 @@ If you request an explicit selection mode, `selected_config` is populated:
 
 ## AI8X Extras
 
-This repository also includes optional **ai8x / MAX78002** helpers (as used in the Indoor Environment Quantization publication). These are extensions on
+This repository also includes optional **ai8x / MAX78002** helpers (example runners and sweeps for reproducibility). These are extensions on
 top of the standalone initializer, not the core of the implementation.
 
 Available helpers:
 
 - [run_hawqv2_indoor.py](tools/run_hawqv2_indoor.py):
-  convenience runner for the indoor environment CNN used with that ai8x overlay
+  example convenience runner wired to a specific bundled `ai8x-training` overlay layout (replace with your own model/data paths)
 - [run_hawqv2_indoor_sweep.py](tools/run_hawqv2_indoor_sweep.py):
   manifest-driven sweep runner for multiple alpha/input-length checkpoints
 - [make_ai8x_qat_policy.py](tools/make_ai8x_qat_policy.py):
@@ -432,7 +434,7 @@ Available helpers:
 - [extract_bitwidths.py](tools/extract_bitwidths.py):
   normalize a result JSON into a simple `layer_bits` JSON
 
-Example indoor workflow:
+Example ai8x workflow (paths are from the bundled illustration; adapt to your tree):
 
 ```bash
 conda activate max
@@ -447,11 +449,11 @@ python tools/run_hawqv2_indoor.py \
   --compression-ratio 1.5
 ```
 
-For the indoor workflow, use a floating-point or pre-QAT checkpoint if possible. That is the correct input for HAWQ
+For this example layout, use a floating-point or pre-QAT checkpoint if possible. That is the correct input for HAWQ
 precision initialization. Using a final quantized/QAT checkpoint is possible as a diagnostic, but it is not the
 preferred path for selecting the mixed-precision configuration.
 
-This convenience runner expects the ai8x-side model/runtime pieces from the matching `ai8x-training` overlay (indoor environment dataset and model defs).
+This convenience runner expects the ai8x-side model and dataset definitions from the `ai8x-training` checkout you point `--ai8x-root` / `--data-dir` at (the bundled examples use one concrete dataset layout).
 The standalone HAWQ-V2 initializer itself does not depend on ai8x.
 
 Alpha/input-length sweep:
